@@ -17,28 +17,28 @@ class IsAdmin(BaseFilter):
         return message.from_user.id in admin_id_list
 
 
-router = Router()
+admin_router = Router()
 
-@router.message(Command("admin"), IsAdmin())
+@admin_router.message(Command("admin"), IsAdmin())
 async def admin_message(message: Message):
     await message.answer("Ассалаумағалейкум админ!", reply_markup=kb.admin_kb)
 
-@router.message(F.text=="Отмена", IsAdmin())
+@admin_router.message(F.text=="Отмена", IsAdmin())
 async def cancel_admin(message: Message, state: FSMContext):
     await message.answer("Асалаумағалейкум админ!", reply_markup=kb.admin_kb)
     await message.delete()
     await state.clear()
 
-@router.message(F.text=="Склад", IsAdmin())
+@admin_router.message(F.text=="Склад", IsAdmin())
 async def warehouse_main(message: Message, state: FSMContext):
     await message.answer("Выберите действие для склада", reply_markup=kb.admin_warehouse_operations_kb)
 
-@router.message(F.text=="Пользователь", IsAdmin())
+@admin_router.message(F.text=="Пользователь", IsAdmin())
 async def warehouse_main(message: Message, state: FSMContext):
     await message.answer("Выберите действие для пользователя", reply_markup=kb.admin_user_operations_kb)
 
 
-@router.message(F.text=="Назад (как пользователь)")
+@admin_router.message(F.text=="Назад (как пользователь)")
 async def back_message(message: Message):
     user = await user_services.find_user(message.from_user.id)
 

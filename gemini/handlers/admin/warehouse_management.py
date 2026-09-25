@@ -1,4 +1,4 @@
-from aiogram import F, Router
+from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
@@ -7,7 +7,8 @@ from services import warehouse_services, inventory_services
 
 import keyboards as kb
 
-from handlers.admin.admin_handler import IsAdmin
+from admin_handler import admin_router
+from admin_handler import IsAdmin
 
 class WarehouseStates(StatesGroup):
     warehouse_name = State()
@@ -15,15 +16,13 @@ class WarehouseStates(StatesGroup):
 class WarehouseOperationsStates(StatesGroup):
     warehouse_id = State()
 
-router = Router()
-
 # Add warehouse
-@router.message(F.text=="Добавить склад", IsAdmin())
+@admin_router.message(F.text=="Добавить склад", IsAdmin())
 async def add_warehouse(message: Message, state: FSMContext):
     await state.set_state(WarehouseStates.warehouse_name)
     await message.reply("Напишите название склада", reply_markup=kb.cancel_admin_kb)
 
-@router.message(WarehouseStates.warehouse_name, IsAdmin())
+@admin_router.message(WarehouseStates.warehouse_name, IsAdmin())
 async def reply_warehouse_message(message: Message, state: FSMContext):
     warehouse_name = message.text
     await state.update_data(warehouse_name=warehouse_name)
@@ -35,14 +34,14 @@ async def reply_warehouse_message(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(F.text=="Остатки по складу", IsAdmin())
+@admin_router.message(F.text=="Остатки по складу", IsAdmin())
 async def get_warehouse_inventory(message: Message, state: FSMContext):
     markup = await kb.warehouses_main()
     await message.answer("Выберите склад", reply_markup=markup)
 
     await state.set_state(WarehouseOperationsStates.warehouse_id)
 
-@router.callback_query(WarehouseOperationsStates.warehouse_id, IsAdmin())
+@admin_router.callback_query(WarehouseOperationsStates.warehouse_id, IsAdmin())
 async def select_warehouse(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=None)
     warehouse_id = int(callback.data)

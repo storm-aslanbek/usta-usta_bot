@@ -139,11 +139,3 @@ edit_options_inline = InlineKeyboardMarkup(inline_keyboard=[
         InlineKeyboardButton(text="Склад", callback_data="warehouse_id")
     ]
 ])
-
-reports_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
-    [
-        KeyboardButton(text="Краткий отчет"),
-        KeyboardButton(text="Excel отчет"),
-        KeyboardButton(text="Excel сводка операции")
-    ]
-])

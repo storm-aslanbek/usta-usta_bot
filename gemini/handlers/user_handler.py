@@ -7,7 +7,7 @@ from aiogram.types import Message, WebAppInfo, InlineKeyboardButton, InlineKeybo
 import keyboards as kb
 from services import user_services, inventory_services
 
-router = Router()
+user_router = Router()
 
 class IsManager(BaseFilter):
     async def __call__(self, message: Message) -> bool:
@@ -32,7 +32,7 @@ class ProductOutgoingStates(StatesGroup):
     toy_quantity = State()
     comment_text = State()
 
-@router.message(CommandStart())
+@user_router.message(CommandStart())
 async def start_message(message: Message):
     user = await user_services.find_user(message.from_user.id)
 
@@ -46,15 +46,15 @@ async def start_message(message: Message):
     else:
         await message.answer("Ассалаумағалейкум! Бот нужен для облегчения учета игрушек. Для пользования попросите Админстратора зарегестрировать вас. Удачи!", reply_markup=kb.user_kb)
 
-@router.message(Command("id"))
+@user_router.message(Command("id"))
 async def get_user_data(message: Message):
     await message.answer(f'id: {message.from_user.id}\nИмя пользователя: {message.from_user.username}')
 
-@router.message(F.text == "В главное")
+@user_router.message(F.text == "В главное")
 async def move_to_main(message: Message):
     await message.answer(f'Выберите действие:', reply_markup=kb.user_kb)
 
-@router.message(F.text=="❌Отмена", IsManager())
+@user_router.message(F.text=="❌Отмена", IsManager())
 async def cancel_user(message: Message, state: FSMContext):
     user = await user_services.find_user(message.from_user.id)
 
@@ -67,7 +67,7 @@ async def cancel_user(message: Message, state: FSMContext):
 
 
 # view inventory method
-@router.message(F.text=="Мои остатки", IsManager())
+@user_router.message(F.text=="Мои остатки", IsManager())
 async def inventory_handler(message: Message):
     data = await user_services.confirm_user(message.from_user.id)
     inventory = await inventory_services.get_inventory(data['warehouse_id'])
@@ -80,7 +80,7 @@ async def inventory_handler(message: Message):
     await message.answer(filter_message, reply_markup=kb.main_kb)
 
 
-@router.message(F.text == "Инструкция")
+@user_router.message(F.text == "Инструкция")
 async def send_instruction(message: Message):
     await message.answer(f'Бот предназначен для введение учета остатков на игрушек на складе. Всего имеется 2 категории игрушек: мелкие и большие. '
                          f'При новых поступлениях вы можете сделать приход или наоборот расход товара.\n'
@@ -94,7 +94,7 @@ async def send_instruction(message: Message):
 
 
 # incoming product
-@router.message(F.text=="Приход", IsManager())
+@user_router.message(F.text=="Приход", IsManager())
 async def incoming_product(message: Message, state: FSMContext):
     await state.set_state(ProductIncomingStates.user_id)
     user_data = await user_services.confirm_user(message.from_user.id)
@@ -108,7 +108,7 @@ async def incoming_product(message: Message, state: FSMContext):
     markup = await kb.products_main()
     await message.reply("Выберите категорию товара", reply_markup=markup)
 
-@router.callback_query(ProductIncomingStates.product_id, IsManager())
+@user_router.callback_query(ProductIncomingStates.product_id, IsManager())
 async def get_product_type(callback: CallbackQuery, state: FSMContext):
     await state.update_data(product_id=int(callback.data))
     await state.set_state(ProductIncomingStates.toy_quantity)
@@ -116,13 +116,13 @@ async def get_product_type(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("Напишите количество игрушек (целое число без точек, запятых и пробелов)", reply_markup=kb.cancel_user_kb)
     await callback.message.delete()
 
-@router.message(ProductIncomingStates.toy_quantity, IsManager())
+@user_router.message(ProductIncomingStates.toy_quantity, IsManager())
 async def get_product_quantity(message: Message, state: FSMContext):
     await state.update_data(toy_quantity=int(message.text))
     await state.set_state(ProductIncomingStates.comment_text)
     await message.answer("Напишите комментарий или напишите 0")
 
-@router.message(ProductIncomingStates.comment_text, IsManager())
+@user_router.message(ProductIncomingStates.comment_text, IsManager())
 async def send_incoming_data(message: Message, state: FSMContext):
     await state.update_data(comment_text=message.text)
     data = await state.get_data()
@@ -148,7 +148,7 @@ async def send_incoming_data(message: Message, state: FSMContext):
 
 
 # outgoing product
-@router.message(F.text=="Расход", IsManager())
+@user_router.message(F.text=="Расход", IsManager())
 async def outgoing_product(message: Message, state: FSMContext):
     await state.set_state(ProductOutgoingStates.user_id)
     user_data = await user_services.confirm_user(message.from_user.id)
@@ -162,7 +162,7 @@ async def outgoing_product(message: Message, state: FSMContext):
     markup = await kb.products_main()
     await message.reply("Выберите категорию товара", reply_markup=markup)
 
-@router.callback_query(ProductOutgoingStates.product_id, IsManager())
+@user_router.callback_query(ProductOutgoingStates.product_id, IsManager())
 async def outgoing_product_type(callback: CallbackQuery, state: FSMContext):
     await state.update_data(product_id=int(callback.data))
     await state.set_state(ProductOutgoingStates.toy_quantity)
@@ -171,13 +171,13 @@ async def outgoing_product_type(callback: CallbackQuery, state: FSMContext):
                                   reply_markup=kb.cancel_user_kb)
     await callback.message.delete()
 
-@router.message(ProductOutgoingStates.toy_quantity, IsManager())
+@user_router.message(ProductOutgoingStates.toy_quantity, IsManager())
 async def outgoing_product_quantity(message: Message, state: FSMContext):
     await state.update_data(toy_quantity=int(message.text))
     await state.set_state(ProductOutgoingStates.comment_text)
     await message.answer("Напишите комментарий или напишите 0")
 
-@router.message(ProductOutgoingStates.comment_text, IsManager())
+@user_router.message(ProductOutgoingStates.comment_text, IsManager())
 async def send_outgoing_data(message: Message, state: FSMContext):
     await state.update_data(comment_text=message.text)
     data = await state.get_data()
@@ -201,6 +201,6 @@ async def send_outgoing_data(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(F.text)
+@user_router.message(F.text)
 async def echo_message(message: Message):
     await message.answer("Нет прав или неправильная команда")
