@@ -2,4 +2,3 @@
 .idea/
 .venv/
 .gemini/
-.db/db.py

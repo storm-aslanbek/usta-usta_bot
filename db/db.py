@@ -1,6 +1,11 @@
 import asyncpg
 import logging
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+POSTGRES_URI = os.getenv("POSTGRES_URI")
 # Параметры подключения к вашей PostgreSQL
 DB_CONFIG = {
     "user": "postgres",
@@ -16,7 +21,7 @@ class Database:
 
     async def connect(self):
         """Создаем пул подключений при старте бота"""
-        self.pool = await asyncpg.create_pool(**DB_CONFIG)
+        self.pool = await asyncpg.create_pool(dsn=POSTGRES_URI)
         logging.info("Пул подключений к PostgreSQL успешно создан!")
 
     async def disconnect(self):
