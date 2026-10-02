@@ -1,3 +1,5 @@
+import time
+
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command, BaseFilter, callback_data
 from aiogram.fsm.context import FSMContext
@@ -11,10 +13,18 @@ import keyboards as kb
 
 
 class IsAdmin(BaseFilter):
-    async def __call__(self, message: Message) -> bool:
-        admin_id_list = await user_services.get_admins()
+    _admin_cache = []
+    _last_update = 0
+    CACHE_TTL = 3600
 
-        return message.from_user.id in admin_id_list
+    async def __call__(self, message: Message) -> bool:
+        current_time = time.time()
+
+        if not IsAdmin._admin_cache or (current_time - IsAdmin._last_update) > IsAdmin.CACHE_TTL:
+            IsAdmin._admin_cache = await user_services.get_admins()
+            IsAdmin._last_update = current_time
+
+        return message.from_user.id in IsAdmin._admin_cache
 
 
 router = Router()

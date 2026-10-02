@@ -21,7 +21,8 @@ class Database:
 
     async def connect(self):
         """Создаем пул подключений при старте бота"""
-        self.pool = await asyncpg.create_pool(dsn=POSTGRES_URI)
+        # self.pool = await asyncpg.create_pool(dsn=POSTGRES_URI)
+        self.pool = await asyncpg.create_pool(**DB_CONFIG)
         logging.info("Пул подключений к PostgreSQL успешно создан!")
 
     async def disconnect(self):

@@ -1,3 +1,5 @@
+import time
+
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command, BaseFilter
 from aiogram.fsm.context import FSMContext
@@ -6,16 +8,26 @@ from aiogram.types import Message, WebAppInfo, InlineKeyboardButton, InlineKeybo
 
 import keyboards as kb
 from services import user_services, inventory_services
+from services.exceptions import ServiceError
 
 router = Router()
 
+
 class IsManager(BaseFilter):
+    _manager_cache = []
+    _last_update = 0
+    CACHE_TTL = 3600
+
     async def __call__(self, message: Message) -> bool:
-        user = await user_services.find_user(message.from_user.id)
-        if user:
-            return True
-        else:
-            return False
+        current_time = time.time()
+
+        if not IsManager._manager_cache or (current_time - IsManager._last_update) > IsManager.CACHE_TTL:
+            users = await user_services.get_users()
+
+            IsManager._manager_cache = [user['telegram_id'] for user in users]
+            IsManager._last_update = current_time
+
+        return message.from_user.id in IsManager._manager_cache
 
 
 class ProductIncomingStates(StatesGroup):
@@ -70,14 +82,17 @@ async def cancel_user(message: Message, state: FSMContext):
 @router.message(F.text=="Мои остатки", IsManager())
 async def inventory_handler(message: Message):
     data = await user_services.confirm_user(message.from_user.id)
-    inventory = await inventory_services.get_inventory(data['warehouse_id'])
+    try:
+        inventory = await inventory_services.get_inventory(data['warehouse_id'])
 
-    filter_message = f'Остаток по складу "{inventory[0]["warehouse"]}"\n\n'
+        filter_message = f'Остаток по складу "{inventory[0]["warehouse"]}"\n\n'
 
-    for item in inventory:
-        filter_message += f'{item["product"]}: {item["quantity"]}\n'
+        for item in inventory:
+            filter_message += f'{item["product"]}: {item["quantity"]}\n'
 
-    await message.answer(filter_message, reply_markup=kb.main_kb)
+        await message.answer(filter_message, reply_markup=kb.main_kb)
+    except ServiceError as e:
+        await message.answer(e.message_to_user, reply_markup=kb.main_kb)
 
 
 @router.message(F.text == "Инструкция")
@@ -118,30 +133,31 @@ async def get_product_type(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ProductIncomingStates.toy_quantity, IsManager())
 async def get_product_quantity(message: Message, state: FSMContext):
-    await state.update_data(toy_quantity=int(message.text))
-    await state.set_state(ProductIncomingStates.comment_text)
-    await message.answer("Напишите комментарий или напишите 0")
+    try:
+        product_quantity = int(message.text)
+        await state.update_data(toy_quantity=product_quantity)
+        await state.set_state(ProductIncomingStates.comment_text)
+        await message.answer("Напишите комментарий или напишите 0")
+    except ValueError:
+        await message.answer("Некорректное сообщение! Напишите количество целыми числами!", reply_markup=kb.cancel_user_kb)
+
 
 @router.message(ProductIncomingStates.comment_text, IsManager())
 async def send_incoming_data(message: Message, state: FSMContext):
     await state.update_data(comment_text=message.text)
     data = await state.get_data()
 
-    error = await inventory_services.process_incoming_product(
-        user_id=data["user_id"],
-        warehouse_id=data["warehouse_id"],
-        product_id=data["product_id"],
-        quantity=data["toy_quantity"],
-        comment=data["comment_text"]
-    )
-
-    if error:
-        await message.answer(
-            f"⚠️ Не удалось провести приход.\n\nОшибка БД: {error}",
-            reply_markup=kb.user_kb
+    try:
+        await inventory_services.process_incoming_product(
+            user_id=data["user_id"],
+            warehouse_id=data["warehouse_id"],
+            product_id=data["product_id"],
+            quantity=data["toy_quantity"],
+            comment=data["comment_text"]
         )
-    else:
         await message.answer("✅ Приход товара успешно проведен!", reply_markup=kb.user_kb)
+    except ServiceError as e:
+        await message.answer(e.message_to_user, reply_markup=kb.user_kb)
 
     await state.clear()
 
@@ -182,21 +198,17 @@ async def send_outgoing_data(message: Message, state: FSMContext):
     await state.update_data(comment_text=message.text)
     data = await state.get_data()
 
-    error = await inventory_services.process_outgoing_product(
-        user_id=data["user_id"],
-        warehouse_id=data["warehouse_id"],
-        product_id=data["product_id"],
-        quantity=data["toy_quantity"],
-        comment=data["comment_text"]
-    )
-
-    if error:
-        await message.answer(
-            f"⚠️ Не удалось провести расход.\n\nОшибка БД: {error}",
-            reply_markup=kb.user_kb
+    try:
+        await inventory_services.process_outgoing_product(
+            user_id=data["user_id"],
+            warehouse_id=data["warehouse_id"],
+            product_id=data["product_id"],
+            quantity=data["toy_quantity"],
+            comment=data["comment_text"]
         )
-    else:
         await message.answer("✅ Расход товара успешно проведен!", reply_markup=kb.user_kb)
+    except ServiceError as e:
+        await message.answer(e.message_to_user, reply_markup=kb.user_kb)
 
     await state.clear()
 
