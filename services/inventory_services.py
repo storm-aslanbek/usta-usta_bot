@@ -113,4 +113,3 @@ async def process_outgoing_product(
     except Exception as e:
         logging.critical(f"Unexpected error during outgoing product: {e}")
         raise GeneralDBError(tech_details=str(e))
-        return
