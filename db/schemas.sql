@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
 
     -- Связываем пользователя со складом:
 
-    FOREIGN KEY (warehouse_id)
+    FOREIGN KEY (warehouse_id)q
         REFERENCES warehouses(id)
 );
 

@@ -42,7 +42,7 @@ async def process_incoming_product(
     warehouse_id: int,
     product_id: int,
     quantity: int,
-    comment: str
+    comment: str,
 ):
     try:
         async with db.pool.acquire() as conn:
@@ -64,7 +64,6 @@ async def process_incoming_product(
                     INSERT INTO transactions (user_id, warehouse_id, product_id, quantity, comment, operation_type)
                     VALUES ($1, $2, $3, $4, $5, 'incoming');
                 """, user_id, warehouse_id, product_id, quantity, comment)
-
         return None
     except NotEnoughStockError:
         # Пробрасываем ошибку логики дальше
@@ -83,7 +82,8 @@ async def process_outgoing_product(
     warehouse_id: int,
     product_id: int,
     quantity: int,
-    comment: str
+    comment: str,
+    is_transfer: bool
 ):
     try:
         async with db.pool.acquire() as conn:
@@ -103,6 +103,56 @@ async def process_outgoing_product(
                     INSERT INTO transactions (user_id, warehouse_id, product_id, quantity, comment, operation_type)
                     VALUES ($1, $2, $3, $4, $5, 'outgoing');
                 """, user_id, warehouse_id, product_id, quantity, comment)
+        return None
+    except NotEnoughStockError:
+        raise
+    except asyncpg.PostgresError as e:
+        logging.error(f"Database error during outgoing product: {e}")
+        raise GeneralDBError(tech_details=str(e))
+    except Exception as e:
+        logging.critical(f"Unexpected error during outgoing product: {e}")
+        raise GeneralDBError(tech_details=str(e))
+
+
+async def process_trtansfer_product(
+        user_id: int,
+        sender_warehouse_id: int,
+        recipient_warehouse_id: int,
+        product_id: int,
+        product_quantity: int,
+        comment: str
+):
+    if sender_warehouse_id == recipient_warehouse_id:
+        from services.exceptions import ServiceError
+        raise ServiceError("⚠️ Склад-отправитель и склад-получатель совпадают.")
+    try:
+        async with db.pool.acquire() as conn:
+            async with conn.transaction():
+                status = await conn.execute("""
+                                            UPDATE inventory
+                                            SET quantity = inventory.quantity - $3
+                                            WHERE warehouse_id = $1
+                                              AND product_id = $2
+                                              AND quantity >= $3;
+                                            """, sender_warehouse_id, product_id, product_quantity)
+
+                if status == 'UPDATE 0':
+                    raise NotEnoughStockError()
+
+                await conn.execute("""
+                                   INSERT INTO inventory (warehouse_id, product_id, quantity)
+                                   VALUES ($1, $2, $3) ON CONFLICT (warehouse_id, product_id)
+                    DO
+                                   UPDATE SET quantity = inventory.quantity + $3;
+                                   """, recipient_warehouse_id, product_id, product_quantity)
+
+                await conn.execute("""
+                                   INSERT INTO transactions
+                                   (user_id, warehouse_id, from_warehouse_id, to_warehouse_id, product_id, quantity,
+                                    comment, operation_type)
+                                   VALUES ($1, $2, $2, $3, $4, $5, $6, 'transfer');
+                                   """, user_id, sender_warehouse_id, recipient_warehouse_id, product_id,
+                                   product_quantity, comment)
 
         return None
     except NotEnoughStockError:

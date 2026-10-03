@@ -44,6 +44,14 @@ class ProductOutgoingStates(StatesGroup):
     toy_quantity = State()
     comment_text = State()
 
+class ProductTransferStates(StatesGroup):
+    user_id = State()
+    sender_warehouse_id = State()
+    recipient_warehouse_id = State()
+    product_id = State()
+    toy_quantity = State()
+    comment_text = State()
+
 @router.message(CommandStart())
 async def start_message(message: Message):
     user = await user_services.find_user(message.from_user.id)
@@ -207,6 +215,74 @@ async def send_outgoing_data(message: Message, state: FSMContext):
             comment=data["comment_text"]
         )
         await message.answer("✅ Расход товара успешно проведен!", reply_markup=kb.user_kb)
+    except ServiceError as e:
+        await message.answer(e.message_to_user, reply_markup=kb.user_kb)
+
+    await state.clear()
+
+
+@router.message(F.text=="Перевод")
+async def transfer_product(message: Message, state: FSMContext):
+    markup = await kb.warehouses_main()
+    await state.set_state(ProductTransferStates.user_id)
+    user_data = await user_services.confirm_user(message.from_user.id)
+    await state.update_data(
+        user_id=user_data["id"],
+        sender_warehouse_id=user_data["warehouse_id"]
+    )
+    await state.set_state(ProductTransferStates.recipient_warehouse_id)
+
+    await message.reply("🛑Данная функция предназначена для перевода остатков на другой склад. Для списания или прихода расходов "
+                         "используйте функции приход/расход", reply_markup=kb.cancel_user_kb)
+    await message.answer("Выберите на какой склад произвести перевод остатков", reply_markup=markup)
+
+@router.callback_query(ProductTransferStates.recipient_warehouse_id, IsManager())
+async def get_recipient_warehouse(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    markup = await kb.products_main()
+    recipient_data = int(callback.data)
+
+    await state.update_data(recipient_warehouse_id=recipient_data)
+    await state.set_state(ProductTransferStates.product_id)
+
+    await callback.message.answer("Выберите тип игрушек для перевода", reply_markup=markup)
+
+@router.callback_query(ProductTransferStates.product_id, IsManager())
+async def get_product_type_for_transfer(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    product_data = int(callback.data)
+
+    await state.update_data(product_id=product_data)
+    await state.set_state(ProductTransferStates.toy_quantity)
+
+    await callback.message.answer("Напишите количество игрушек (целое число без точек, запятых и пробелов)", reply_markup=kb.cancel_user_kb)
+
+@router.message(ProductTransferStates.toy_quantity, IsManager())
+async def get_toy_quantity(message: Message, state: FSMContext):
+    toy_quantity = int(message.text)
+
+    await state.update_data(toy_quantity=toy_quantity)
+    await state.set_state(ProductTransferStates.comment_text)
+
+    await message.answer("Напишите комментарии или напишите 0 (Можете написать стоимость такси/логистики", reply_markup=kb.cancel_user_kb)
+
+@router.message(ProductTransferStates.comment_text, IsManager())
+async def get_data_to_transfer(message: Message, state: FSMContext):
+    await state.update_data(comment_text=message.text)
+    data = await state.get_data()
+
+    try:
+        await inventory_services.process_trtansfer_product(
+            user_id=data["user_id"],
+            sender_warehouse_id=data["sender_warehouse_id"],
+            recipient_warehouse_id=data["recipient_warehouse_id"],
+            product_id=data["product_id"],
+            product_quantity=data["toy_quantity"],
+            comment=data["comment_text"]
+        )
+        await message.answer("✅ Перевод товара успешно проведен!", reply_markup=kb.user_kb)
     except ServiceError as e:
         await message.answer(e.message_to_user, reply_markup=kb.user_kb)
 
