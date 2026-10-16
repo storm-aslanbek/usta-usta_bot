@@ -83,7 +83,6 @@ async def process_outgoing_product(
     product_id: int,
     quantity: int,
     comment: str,
-    is_transfer: bool
 ):
     try:
         async with db.pool.acquire() as conn:
