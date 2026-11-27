@@ -12,6 +12,7 @@ import keyboards as kb
 
 from handlers.admin.admin_handler import IsAdmin
 from handlers.user_handler import IsManager
+from handlers.history_view import send_long_text
 
 class UserStates(StatesGroup):
     telegram_id = State()
@@ -31,10 +32,33 @@ class DeleteUserStates(StatesGroup):
 
 router = Router()
 
+ROLE_TITLES = {"admin": "Администратор", "user": "Пользователь"}
+
 
 def reset_access_cache():
     IsAdmin.reset_cache()
     IsManager.reset_cache()
+
+
+# User list
+def format_user(user) -> str:
+    name = html.escape(user["full_name"])
+    if user["username"] and user["username"] != "0":
+        name += f' (@{html.escape(user["username"])})'
+
+    return (
+        f'{name}\n'
+        f'Роль: {ROLE_TITLES.get(user["role"], user["role"])}\n'
+        f'Склад: {html.escape(user["warehouse_name"] or "не назначен")}'
+    )
+
+@router.message(F.text=="Список пользователей", IsAdmin())
+async def show_users(message: Message, state: FSMContext):
+    await state.clear()
+    users = await user_services.get_users_with_warehouses()
+
+    blocks = [f"Пользователи ({len(users)})"] + [format_user(user) for user in users]
+    await send_long_text(message, blocks, "users.txt", kb.admin_user_operations_kb)
 
 
 # Add user and linking warehouse

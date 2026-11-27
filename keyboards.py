@@ -55,7 +55,8 @@ admin_user_operations_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
         KeyboardButton(text="Удалить пользователя")
     ],
     [
-        KeyboardButton(text="Изменить пользователя")
+        KeyboardButton(text="Изменить пользователя"),
+        KeyboardButton(text="Список пользователей")
     ],
     [
         KeyboardButton(text="Отмена")
@@ -69,6 +70,7 @@ admin_warehouse_operations_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboa
     ],
     [
         KeyboardButton(text="Действия склада"),
+        KeyboardButton(text="Список складов"),
     ],
     [
         KeyboardButton(text="Отмена")

@@ -53,6 +53,19 @@ async def get_users():
         WHERE is_active;
     """)
 
+async def get_users_with_warehouses():
+    return await db.pool.fetch("""
+        SELECT
+            users.full_name,
+            users.username,
+            users.role,
+            warehouses.name AS warehouse_name
+        FROM users
+        LEFT JOIN warehouses ON users.warehouse_id = warehouses.id
+        WHERE users.is_active
+        ORDER BY users.full_name;
+    """)
+
 async def confirm_user(telegram_id: int):
     return await db.pool.fetchrow("""
         SELECT users.id,

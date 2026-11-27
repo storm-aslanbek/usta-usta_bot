@@ -1,3 +1,6 @@
+import html
+from itertools import groupby
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
@@ -8,7 +11,8 @@ from services import warehouse_services, inventory_services
 import keyboards as kb
 
 from handlers.admin.admin_handler import IsAdmin
-from handlers.history_view import send_history
+from handlers.history_view import send_history, send_long_text
+from handlers.admin.user_management import ROLE_TITLES
 
 class WarehouseStates(StatesGroup):
     warehouse_name = State()
@@ -20,6 +24,28 @@ class WarehouseHistoryStates(StatesGroup):
     warehouse_id = State()
 
 router = Router()
+
+# Warehouse list
+def format_warehouses(rows) -> list[str]:
+    blocks = []
+
+    for (_, warehouse), users in groupby(rows, key=lambda row: (row["id"], row["warehouse"])):
+        lines = [
+            f'• {html.escape(user["full_name"])}, {ROLE_TITLES.get(user["role"], user["role"]).lower()}'
+            for user in users if user["full_name"]
+        ]
+        blocks.append("\n".join([f"<b>{html.escape(warehouse)}</b>"] + (lines or ["Нет пользователей"])))
+
+    return blocks
+
+@router.message(F.text=="Список складов", IsAdmin())
+async def show_warehouses(message: Message, state: FSMContext):
+    await state.clear()
+    blocks = format_warehouses(await warehouse_services.get_warehouses_with_users())
+
+    await send_long_text(message, [f"Склады ({len(blocks)})"] + blocks, "warehouses.txt",
+                         kb.admin_warehouse_operations_kb)
+
 
 # Add warehouse
 @router.message(F.text=="Добавить склад", IsAdmin())

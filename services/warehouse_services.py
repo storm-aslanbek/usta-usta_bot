@@ -6,6 +6,20 @@ async def get_warehouses():
         SELECT id, name FROM warehouses ORDER BY id;
     """)
 
+async def get_warehouses_with_users():
+    """Строка на каждого пользователя склада; у пустого склада full_name равен None"""
+    return await db.pool.fetch("""
+        SELECT
+            warehouses.id,
+            warehouses.name AS warehouse,
+            users.full_name,
+            users.role
+        FROM warehouses
+        LEFT JOIN users
+            ON users.warehouse_id = warehouses.id AND users.is_active
+        ORDER BY warehouses.name, warehouses.id, users.full_name;
+    """)
+
 async def get_warehouse_name(warehouse_id: int):
     return await db.pool.fetchval("""
         SELECT name FROM warehouses WHERE id = $1;
