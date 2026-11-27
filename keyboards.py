@@ -110,17 +110,16 @@ broadcast_audience_inline = InlineKeyboardMarkup(inline_keyboard=[
     ]
 ])
 
-broadcast_compose_kb = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
+broadcast_cancel_inline = InlineKeyboardMarkup(inline_keyboard=[
     [
-        KeyboardButton(text="Отправить рассылку"),
-        KeyboardButton(text="Отмена")
+        InlineKeyboardButton(text="Отмена", callback_data="broadcast_cancel")
     ]
 ])
 
 broadcast_confirm_inline = InlineKeyboardMarkup(inline_keyboard=[
     [
-        InlineKeyboardButton(text="Да, отправить", callback_data="broadcast_yes"),
-        InlineKeyboardButton(text="Нет", callback_data="broadcast_no")
+        InlineKeyboardButton(text="Да, отправить", callback_data="broadcast_send"),
+        InlineKeyboardButton(text="Нет", callback_data="broadcast_cancel")
     ]
 ])
 
