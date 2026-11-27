@@ -26,6 +26,10 @@ class IsAdmin(BaseFilter):
 
         return message.from_user.id in IsAdmin._admin_cache
 
+    @classmethod
+    def reset_cache(cls):
+        cls._admin_cache = []
+
 
 router = Router()
 

@@ -7,7 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from handlers import user_handler
-from handlers.admin import admin_handler, user_management, warehouse_management, critical_stock_management
+from handlers.admin import admin_handler, user_management, warehouse_management, critical_stock_management, reports_management, broadcast_management
 from db.db import db
 
 load_dotenv()
@@ -18,6 +18,9 @@ bot = Bot(token=TG_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML
 
 async def bot_main():
     dp.include_router(admin_handler.router)
+    # Выше остальных, чтобы собрать в рассылку любое сообщение админа
+    dp.include_router(broadcast_management.router)
+    dp.include_router(reports_management.router)
     dp.include_router(user_management.router)
     dp.include_router(warehouse_management.router)
     dp.include_router(critical_stock_management.router)

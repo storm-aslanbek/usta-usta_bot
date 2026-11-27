@@ -1,13 +1,17 @@
+import html
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 from aiogram.fsm.state import State, StatesGroup
 from services import user_services
+from services.exceptions import ServiceError
 
 import keyboards as kb
 
 from handlers.admin.admin_handler import IsAdmin
+from handlers.user_handler import IsManager
 
 class UserStates(StatesGroup):
     telegram_id = State()
@@ -21,7 +25,17 @@ class EditUserStates(StatesGroup):
     edit_option = State()
     edit_data = State()
 
+class DeleteUserStates(StatesGroup):
+    telegram_id = State()
+    confirmation = State()
+
 router = Router()
+
+
+def reset_access_cache():
+    IsAdmin.reset_cache()
+    IsManager.reset_cache()
+
 
 # Add user and linking warehouse
 @router.message(F.text=="Добавить пользователя", IsAdmin())
@@ -31,7 +45,12 @@ async def get_user_id(message: Message, state: FSMContext):
 
 @router.message(UserStates.telegram_id, IsAdmin())
 async def get_user_full_name(message: Message, state: FSMContext):
-    user_id = int(message.text)
+    try:
+        user_id = int(message.text)
+    except (TypeError, ValueError):
+        await message.answer("Некорректное сообщение! telegram_id состоит только из цифр", reply_markup=kb.cancel_admin_kb)
+        return
+
     await state.update_data(telegram_id=user_id)
     await state.set_state(UserStates.full_name)
 
@@ -70,21 +89,6 @@ async def get_admin_warehouse(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(UserStates.warehouse_id, IsAdmin())
-async def get_admin_data(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_reply_markup(reply_markup=None)
-    warehouse_id = int(callback.data)
-
-    await callback.answer("Администратор привязан к складу")
-    await state.update_data(warehouse_id=warehouse_id)
-    await callback.message.answer("Администратор добавлен", reply_markup=kb.admin_kb)
-
-    data = await state.get_data()
-    await user_services.add_user(data["telegram_id"], data["full_name"], data["telegram_username"], data["role"],
-                                 data["warehouse_id"])
-
-    await state.clear()
-
 @router.callback_query(UserStates.role, F.data == "user", IsAdmin())
 async def get_user_warehouse(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -102,17 +106,68 @@ async def get_user_warehouse(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(UserStates.warehouse_id, IsAdmin())
-async def get_user_data(callback: CallbackQuery, state: FSMContext):
-    warehouse_id = int(callback.data)
+async def save_new_user(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_reply_markup(reply_markup=None)
-
-    await callback.answer("Пользователь привязан к складу")
-    await state.update_data(warehouse_id=warehouse_id)
-    await callback.message.answer("Пользователь добавлен", reply_markup=kb.admin_kb)
-
+    await state.update_data(warehouse_id=int(callback.data))
     data = await state.get_data()
-    await user_services.add_user(data["telegram_id"], data["full_name"], data["telegram_username"], data["role"], data["warehouse_id"])
 
+    try:
+        await user_services.add_user(data["telegram_id"], data["full_name"], data["telegram_username"], data["role"], data["warehouse_id"])
+        reset_access_cache()
+
+        role_title = "Администратор" if data["role"] == "admin" else "Пользователь"
+        await callback.answer(f"{role_title} привязан к складу")
+        await callback.message.answer(f"{role_title} добавлен", reply_markup=kb.admin_kb)
+    except ServiceError as e:
+        await callback.answer()
+        await callback.message.answer(e.message_to_user, reply_markup=kb.admin_kb)
+
+    await state.clear()
+
+# Delete user
+@router.message(F.text=="Удалить пользователя", IsAdmin())
+async def delete_user(message: Message, state: FSMContext):
+    await state.set_state(DeleteUserStates.telegram_id)
+
+    markup = await kb.users_main()
+    await message.reply("Выберите пользователя для удаления", reply_markup=markup)
+
+@router.callback_query(DeleteUserStates.telegram_id, F.data.isdigit(), IsAdmin())
+async def confirm_user_deletion(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    telegram_id = int(callback.data)
+    user_data = await user_services.find_user(telegram_id)
+
+    if not user_data:
+        await callback.message.edit_text("Пользователь уже удален")
+        await state.clear()
+        return
+
+    await state.update_data(telegram_id=telegram_id, full_name=user_data["full_name"])
+    await state.set_state(DeleteUserStates.confirmation)
+    await callback.message.edit_text(f'Удалить пользователя {html.escape(user_data["full_name"])}?',
+                                     reply_markup=kb.confirm_delete_inline)
+
+@router.callback_query(DeleteUserStates.confirmation, F.data == "delete_yes", IsAdmin())
+async def delete_confirmed_user(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    data = await state.get_data()
+
+    try:
+        await user_services.deactivate_user(data["telegram_id"], callback.from_user.id)
+        reset_access_cache()
+        await callback.message.answer(f'Пользователь {html.escape(data["full_name"])} удален',
+                                      reply_markup=kb.admin_user_operations_kb)
+    except ServiceError as e:
+        await callback.message.answer(e.message_to_user, reply_markup=kb.admin_user_operations_kb)
+
+    await state.clear()
+
+@router.callback_query(DeleteUserStates.confirmation, F.data == "delete_no", IsAdmin())
+async def cancel_user_deletion(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_text("Удаление отменено")
     await state.clear()
 
 @router.message(F.text=="Изменить пользователя", IsAdmin())
@@ -170,10 +225,20 @@ async def send_edit_text_data(message: Message, state: FSMContext):
     if option == "full_name":
         await user_services.edit_user_data(int(data.get('id')), data.get('edit_option'), data.get('edit_data'))
     elif option == "telegram_id":
-        await user_services.edit_user_data(int(data.get('id')), data.get('edit_option'), data.get('edit_data'))
+        try:
+            telegram_id = int(data.get('edit_data'))
+        except (TypeError, ValueError):
+            await message.answer("Некорректное сообщение! telegram_id состоит только из цифр", reply_markup=kb.cancel_admin_kb)
+            return
+        try:
+            await user_services.edit_user_data(int(data.get('id')), data.get('edit_option'), telegram_id)
+        except ServiceError as e:
+            await message.answer(e.message_to_user, reply_markup=kb.cancel_admin_kb)
+            return
     elif option == "username":
         await user_services.edit_user_data(int(data.get('id')), data.get('edit_option'), data.get('edit_data'))
 
+    reset_access_cache()
     await message.answer("Данные изменены успешно")
     await state.clear()
 
@@ -188,6 +253,7 @@ async def send_edit_data(callback: CallbackQuery, state: FSMContext):
     elif option == "warehouse_id":
         await user_services.edit_user_data(int(data.get('id')), data.get('edit_option'), int(data.get('edit_data')))
 
+    reset_access_cache()
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer("Данные изменены успешно")
     await state.clear()

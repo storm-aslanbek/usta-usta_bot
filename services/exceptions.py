@@ -18,12 +18,9 @@ class NotEnoughStockError(InventoryError):
         super().__init__("⚠️ На складе недостаточно товара для списания.")
 
 class GeneralDBError(ServiceError):
-    """General database error that shows technical details in the chat"""
+    """General database error, technical details are kept for logs only"""
     def __init__(self, internal_description: str):
-        # МЫ ИЗМЕНИЛИ ЭТУ СТРОКУ.
-        # Теперь техническое описание (SQL ошибка) напрямую включается
-        # в сообщение, предназначенное для отправки в Telegram чат.
-        message_for_chat = f"❌ Критическая ошибка базы данных.\nПроблема: {internal_description}"
+        message_for_chat = "❌ Ошибка базы данных. Попробуйте позже или обратитесь к Администратору."
         super().__init__(message_for_chat, internal_description)
 
 

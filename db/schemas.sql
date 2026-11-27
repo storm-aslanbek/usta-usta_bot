@@ -24,12 +24,16 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL, --admin or manager
 
     warehouse_id BIGINT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE, -- FALSE, если пользователь удален
 
     -- Связываем пользователя со складом:
 
-    FOREIGN KEY (warehouse_id)q
+    FOREIGN KEY (warehouse_id)
         REFERENCES warehouses(id)
 );
+
+-- Для баз, созданных до появления is_active
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
 
 
 

@@ -3,7 +3,7 @@ import logging
 
 from db.db import db
 import services.exceptions
-from .exceptions import GeneralDBError, NotEnoughStockError
+from .exceptions import GeneralDBError, InvalidQuantityError, NotEnoughStockError
 
 
 async def get_inventory(warehouse_id: int):
@@ -24,7 +24,7 @@ async def get_inventory(warehouse_id: int):
         return inventory
     except Exception as e:
         logging.critical(f"Unexpected error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))
 
 async def get_products():
     try:
@@ -35,7 +35,7 @@ async def get_products():
         return products
     except Exception as e:
         logging.critical(f"Unexpected error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))
 
 async def process_incoming_product(
     user_id: int,
@@ -44,6 +44,8 @@ async def process_incoming_product(
     quantity: int,
     comment: str,
 ):
+    if quantity <= 0:
+        raise InvalidQuantityError()
     try:
         async with db.pool.acquire() as conn:
             async with conn.transaction():
@@ -71,11 +73,11 @@ async def process_incoming_product(
     except asyncpg.PostgresError as e:
         # Критическая ошибка SQL (упал сервер, ошибка синтаксиса и т.д.)
         logging.error(f"Database error during outgoing product: {e}")  # Логируем техническую часть
-        raise GeneralDBError(tech_details=str(e))  # Выкидываем красивую ошибку для ТГ
+        raise GeneralDBError(internal_description=str(e))  # Выкидываем красивую ошибку для ТГ
     except Exception as e:
         # Любая другая ошибка
         logging.critical(f"Unexpected error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))
 
 async def process_outgoing_product(
     user_id: int,
@@ -84,6 +86,8 @@ async def process_outgoing_product(
     quantity: int,
     comment: str,
 ):
+    if quantity <= 0:
+        raise InvalidQuantityError()
     try:
         async with db.pool.acquire() as conn:
             async with conn.transaction():
@@ -107,10 +111,10 @@ async def process_outgoing_product(
         raise
     except asyncpg.PostgresError as e:
         logging.error(f"Database error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))
     except Exception as e:
         logging.critical(f"Unexpected error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))
 
 
 async def process_trtansfer_product(
@@ -121,6 +125,8 @@ async def process_trtansfer_product(
         product_quantity: int,
         comment: str
 ):
+    if product_quantity <= 0:
+        raise InvalidQuantityError()
     if sender_warehouse_id == recipient_warehouse_id:
         from services.exceptions import ServiceError
         raise ServiceError("⚠️ Склад-отправитель и склад-получатель совпадают.")
@@ -158,7 +164,7 @@ async def process_trtansfer_product(
         raise
     except asyncpg.PostgresError as e:
         logging.error(f"Database error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))
     except Exception as e:
         logging.critical(f"Unexpected error during outgoing product: {e}")
-        raise GeneralDBError(tech_details=str(e))
+        raise GeneralDBError(internal_description=str(e))

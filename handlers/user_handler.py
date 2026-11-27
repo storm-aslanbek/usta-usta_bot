@@ -9,6 +9,7 @@ from aiogram.types import Message, WebAppInfo, InlineKeyboardButton, InlineKeybo
 import keyboards as kb
 from services import user_services, inventory_services
 from services.exceptions import ServiceError
+from handlers.history_view import send_history
 
 router = Router()
 
@@ -28,6 +29,10 @@ class IsManager(BaseFilter):
             IsManager._last_update = current_time
 
         return message.from_user.id in IsManager._manager_cache
+
+    @classmethod
+    def reset_cache(cls):
+        cls._manager_cache = []
 
 
 class ProductIncomingStates(StatesGroup):
@@ -93,6 +98,10 @@ async def inventory_handler(message: Message):
     try:
         inventory = await inventory_services.get_inventory(data['warehouse_id'])
 
+        if not inventory:
+            await message.answer("На складе пока нет товаров", reply_markup=kb.main_kb)
+            return
+
         filter_message = f'Остаток по складу "{inventory[0]["warehouse"]}"\n\n'
 
         for item in inventory:
@@ -114,6 +123,23 @@ async def send_instruction(message: Message):
                          f'При вознекновении дополнительных вопросов или при форс мажоре связываться с Администратором +7 707 594 9376 Садыр',
                          reply_markup=kb.main_kb)
 
+
+
+# history
+# Должна стоять выше сценариев прихода/расхода/перевода, чтобы их шаги не перехватывали кнопки
+@router.message(F.text=="История", IsManager())
+async def history_handler(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("За какой период?", reply_markup=kb.history_periods("history"))
+
+
+@router.callback_query(F.data.startswith("history:"), IsManager())
+async def show_history(callback: CallbackQuery):
+    await callback.answer()
+    days = int(callback.data.split(":")[1])
+    user = await user_services.confirm_user(callback.from_user.id)
+
+    await send_history(callback.message, user["warehouse_id"], days, "склада", kb.main_kb)
 
 
 # incoming product
@@ -146,7 +172,7 @@ async def get_product_quantity(message: Message, state: FSMContext):
         await state.update_data(toy_quantity=product_quantity)
         await state.set_state(ProductIncomingStates.comment_text)
         await message.answer("Напишите комментарий или напишите 0")
-    except ValueError:
+    except (TypeError, ValueError):
         await message.answer("Некорректное сообщение! Напишите количество целыми числами!", reply_markup=kb.cancel_user_kb)
 
 
@@ -197,9 +223,12 @@ async def outgoing_product_type(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ProductOutgoingStates.toy_quantity, IsManager())
 async def outgoing_product_quantity(message: Message, state: FSMContext):
-    await state.update_data(toy_quantity=int(message.text))
-    await state.set_state(ProductOutgoingStates.comment_text)
-    await message.answer("Напишите комментарий или напишите 0")
+    try:
+        await state.update_data(toy_quantity=int(message.text))
+        await state.set_state(ProductOutgoingStates.comment_text)
+        await message.answer("Напишите комментарий или напишите 0")
+    except (TypeError, ValueError):
+        await message.answer("Некорректное сообщение! Напишите количество целыми числами!", reply_markup=kb.cancel_user_kb)
 
 @router.message(ProductOutgoingStates.comment_text, IsManager())
 async def send_outgoing_data(message: Message, state: FSMContext):
@@ -221,7 +250,7 @@ async def send_outgoing_data(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(F.text=="Перевод")
+@router.message(F.text=="Перевод", IsManager())
 async def transfer_product(message: Message, state: FSMContext):
     markup = await kb.warehouses_main()
     await state.set_state(ProductTransferStates.user_id)
@@ -261,12 +290,15 @@ async def get_product_type_for_transfer(callback: CallbackQuery, state: FSMConte
 
 @router.message(ProductTransferStates.toy_quantity, IsManager())
 async def get_toy_quantity(message: Message, state: FSMContext):
-    toy_quantity = int(message.text)
+    try:
+        toy_quantity = int(message.text)
 
-    await state.update_data(toy_quantity=toy_quantity)
-    await state.set_state(ProductTransferStates.comment_text)
+        await state.update_data(toy_quantity=toy_quantity)
+        await state.set_state(ProductTransferStates.comment_text)
 
-    await message.answer("Напишите комментарии или напишите 0 (Можете написать стоимость такси/логистики", reply_markup=kb.cancel_user_kb)
+        await message.answer("Напишите комментарии или напишите 0 (Можете написать стоимость такси/логистики", reply_markup=kb.cancel_user_kb)
+    except (TypeError, ValueError):
+        await message.answer("Некорректное сообщение! Напишите количество целыми числами!", reply_markup=kb.cancel_user_kb)
 
 @router.message(ProductTransferStates.comment_text, IsManager())
 async def get_data_to_transfer(message: Message, state: FSMContext):
